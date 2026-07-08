@@ -1,0 +1,21 @@
+# Build output
+/build/
+/build-*/
+cmake-build-*/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*~
+compile_commands.json
+.cache/
+
+# ISO / image artifacts (Phase 6)
+*.iso
+*.img
+*.squashfs
+initramfs*.cpio*
+
+# OS cruft
+.DS_Store

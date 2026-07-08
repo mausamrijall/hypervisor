@@ -1,0 +1,9 @@
+# hypercore C++ style. Google base with project-specific tweaks.
+BasedOnStyle: Google
+Language: Cpp
+Standard: c++20
+ColumnLimit: 80
+IndentWidth: 2
+DerivePointerAlignment: false
+PointerAlignment: Left
+IncludeBlocks: Regroup
