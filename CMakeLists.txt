@@ -47,6 +47,8 @@ add_subdirectory(common)
 # Vendored dependencies (toml++) and the config parse/validate library.
 add_subdirectory(third_party)
 add_subdirectory(libconfig)
+# Runtime engine: QEMU launch, pinning, QMP, health, reconcile, control socket.
+add_subdirectory(libcore)
 add_subdirectory(src)
 add_subdirectory(cli)
 

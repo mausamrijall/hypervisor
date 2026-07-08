@@ -17,5 +17,10 @@ compile_commands.json
 *.squashfs
 initramfs*.cpio*
 
+# Test guest build output (Phase 3 integration)
+/build/testguest/
+testguest/*.gz
+testguest/vmlinuz
+
 # OS cruft
 .DS_Store

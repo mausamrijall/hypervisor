@@ -22,8 +22,8 @@ is testable before the next begins. See
 |-------|------|--------|
 | 1 | Repo scaffolding, CMake build, CI, structured logging, runnable skeletons | ✅ |
 | 2 | TOML config schema + parser + validator + unit tests | ✅ |
-| 3 | Daemon: state reconcile, QEMU launch, CPU pinning, control socket, health checks | ⏳ next |
-| 4 | CLI subcommands + live TTY dashboard | — |
+| 3 | Daemon: state reconcile, QEMU launch, CPU pinning, control socket, health checks | ✅ |
+| 4 | CLI subcommands + live TTY dashboard | ⏳ next |
 | 5 | Minimal init + boot environment | — |
 | 6 | Rufus-flashable ISO builder | — |
 

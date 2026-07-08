@@ -34,7 +34,17 @@ jobs:
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake ninja-build
+          # qemu-utils gives us busybox-independent tooling; qemu-system-x86 +
+          # busybox let the test-guest builder and integration tests RUN if the
+          # runner happens to have /dev/kvm. Standard GitHub-hosted runners do
+          # NOT expose /dev/kvm, so the integration tests will SKIP (not fail)
+          # via their capability gate — that is the intended behavior.
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build qemu-system-x86 qemu-utils busybox-static cpio gzip
+
+      - name: Show host capabilities
+        run: |
+          ls -l /dev/kvm || echo "no /dev/kvm on this runner (integration will skip)"
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -43,6 +53,8 @@ jobs:
         run: cmake --build build --parallel
 
       - name: Test
+        # Integration tests self-skip (return 77) without /dev/kvm; unit and
+        # smoke tests always run. A skipped test is not a failure.
         run: ctest --test-dir build --output-on-failure
 
   format-and-lint:
@@ -56,5 +68,5 @@ jobs:
         run: |
           # Non-fatal for now: report diffs but do not gate the build until the
           # source surface stabilizes. Flip to `--dry-run --Werror` to enforce.
-          find src cli common tests -name '*.cpp' -o -name '*.hpp' \
+          find src cli common libconfig libcore tests -name '*.cpp' -o -name '*.hpp' \
             | xargs clang-format --dry-run || true

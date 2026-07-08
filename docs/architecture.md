@@ -68,16 +68,19 @@ one-time dependency for a permanent correctness/security liability.
 
 ### Control channel: line-protocol vs protobuf {#control-line-vs-protobuf}
 
-**Leaning: a simple line-delimited protocol (likely newline-delimited JSON)
-over the Unix socket. Final decision recorded in Phase 3.**
+**Decision (Phase 3, final): a line-delimited request grammar with ndjson
+responses.** Full spec in [protocol.md](protocol.md).
 
-Rationale: the API is tiny (`list`, `start`, `stop`, `status`, `logs`,
-`reload`), local-only (Unix socket, same host, same trust domain), and low
-frequency. Protobuf buys schema evolution and speed we don't need here, at the
-cost of a codegen toolchain and a heavier dependency in the initramfs. A
-line protocol is trivially debuggable with `socat`/`nc`, which fits the
-developer-first ethos. **Tradeoff:** we give up rigid schema versioning; we
-mitigate with an explicit `version` field in every message.
+The API is tiny (`list`, `start`, `stop`, `status`, `reload`), local-only (Unix
+socket, same host, same trust domain), and low frequency. Protobuf buys schema
+evolution and speed we don't need, at the cost of a codegen toolchain and a
+generated-code dependency in the initramfs. Requests are a flat, whitespace-
+delimited line (`<proto> <command> [arg]`) — tokenized with a split + allow-list
+check, **no recursive parser on the privileged input path**. Responses are
+ndjson so the CLI can machine-read structured status. The asymmetry is
+deliberate: the daemon only ever *writes* JSON (safe), never parses it. Every
+message carries a `proto` version so the CLI can detect a mismatch. **Tradeoff:**
+we give up rigid schema versioning; mitigated by the explicit version field.
 
 ### Logging: structured, zero-dependency {#logging}
 
@@ -101,8 +104,8 @@ dependency — C++20 `<format>` suffices in a minimal environment.
 |-------|-------|--------|
 | 1 | Repo scaffolding, CMake, CI, structured logging, runnable skeletons | ✅ done |
 | 2 | TOML config schema + parser + validator + unit tests | ✅ done |
-| 3 | Daemon: reconcile, QEMU launch, pinning, control socket, health checks | ⏳ next |
-| 4 | CLI subcommands + live TTY dashboard | — |
+| 3 | Daemon: reconcile, QEMU launch, pinning, control socket, health checks | ✅ done |
+| 4 | CLI subcommands + live TTY dashboard | ⏳ next |
 | 5 | init + boot environment | — |
 | 6 | ISO builder | — |
 
