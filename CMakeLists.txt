@@ -44,6 +44,9 @@ target_include_directories(hypercore_version
 
 # Header-only common utilities (logging, etc.) shared by daemon and CLI.
 add_subdirectory(common)
+# Vendored dependencies (toml++) and the config parse/validate library.
+add_subdirectory(third_party)
+add_subdirectory(libconfig)
 add_subdirectory(src)
 add_subdirectory(cli)
 

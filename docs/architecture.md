@@ -100,8 +100,30 @@ dependency — C++20 `<format>` suffices in a minimal environment.
 | Phase | Scope | Status |
 |-------|-------|--------|
 | 1 | Repo scaffolding, CMake, CI, structured logging, runnable skeletons | ✅ done |
-| 2 | TOML config schema + parser + unit tests | ⏳ next |
-| 3 | Daemon: reconcile, QEMU launch, pinning, control socket, health checks | — |
+| 2 | TOML config schema + parser + validator + unit tests | ✅ done |
+| 3 | Daemon: reconcile, QEMU launch, pinning, control socket, health checks | ⏳ next |
 | 4 | CLI subcommands + live TTY dashboard | — |
 | 5 | init + boot environment | — |
 | 6 | ISO builder | — |
+
+## Config module (Phase 2)
+
+`libconfig/` is a standalone static library (linked by both the daemon and the
+tests) with a strict **parse / validate split**:
+
+- **Parser** (`parser.cpp`, over vendored toml++): TOML text → the strongly
+  typed structs in `types.hpp` (one `VmConfig` per guest — never a generic
+  key/value map). It reports *value-level* problems: syntax/type errors (E1),
+  unknown keys (E10, strict by design so typos can't silently no-op), bad enum
+  tokens (E5), and malformed memory sizes (E8).
+- **Validator** (`validator.cpp`): a separate pass over the typed structs that
+  reports *set-level* problems and accumulates **all** of them rather than
+  stopping at the first — missing required fields (E2), bad names (E3),
+  duplicates (E4), bad CPU lists (E6), **CPU index ≥ host core count (E7)**,
+  virtiofs-without-share (E9), plus warnings for **CPU pin overlap (W1)**,
+  **RAM overcommit (W2)**, no-VMs (W3), and agentless restart (W4).
+
+Host-dependent checks (E7, W2) compare against an injected `HostInfo` (core
+count, physical RAM), so unit tests pin a synthetic "4 cores, 8 GiB" host and
+assert deterministic outcomes regardless of the CI machine. See
+[schema.md](schema.md) for the full rule table.

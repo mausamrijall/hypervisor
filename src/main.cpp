@@ -10,7 +10,10 @@
 #include <cstring>
 #include <string>
 #include <string_view>
+#include <vector>
 
+#include "hypercore/config/parser.hpp"
+#include "hypercore/config/validator.hpp"
 #include "hypercore/log.hpp"
 #include "hypercore/version.hpp"
 
@@ -128,17 +131,60 @@ int run(const Options& opt) {
              log::field("dry_run", opt.dry_run)});
 
   // ---------------------------------------------------------------------
-  // Phase 2 hook: load + validate the TOML config at opt.config_path.
-  // Phase 3 hook: reconcile desired vs actual VM state, launch QEMU with
-  //               CPU pinning, open the control socket at opt.socket_path,
-  //               install signal handlers, run the health-check loop.
-  // For Phase 1 we simply report readiness and exit so the binary is a
-  // known-good baseline.
+  // Phase 2: load + validate the TOML config. Parsing and validation are two
+  // separate passes; we surface EVERY diagnostic (errors and warnings), not
+  // just the first. Errors mean we refuse to proceed; warnings are logged and
+  // tolerated.
+  // Phase 3 hook: reconcile desired vs actual VM state, launch QEMU with CPU
+  //               pinning, open the control socket, run the health-check loop.
   // ---------------------------------------------------------------------
+  namespace cfg = hypercore::config;
+
+  cfg::ParseResult parsed = cfg::parse_file(opt.config_path);
+  cfg::Diagnostics diags = parsed.diagnostics;
+  if (parsed.config) {
+    diags.append(cfg::validate(*parsed.config, cfg::HostInfo::detect()));
+  }
+
+  for (const auto& d : diags.items()) {
+    auto fields = std::vector<log::Field>{
+        log::field("code", cfg::code_str(d.code)),
+        log::field("at", d.where), log::field("detail", d.message)};
+    if (d.severity == cfg::Severity::Error)
+      log::error("config problem", fields);
+    else
+      log::warn("config advisory", fields);
+  }
+
+  if (!parsed.config || diags.has_errors()) {
+    log::error("config rejected",
+               {log::field("errors", diags.error_count()),
+                log::field("warnings", diags.warning_count())});
+    return 1;
+  }
+
+  log::info("config loaded",
+            {log::field("vms", parsed.config->vms.size()),
+             log::field("warnings", diags.warning_count())});
+
+  if (opt.dry_run) {
+    // Reconcile plan preview: with no actual state yet (Phase 3), the plan is
+    // simply "every configured guest would be started".
+    for (const auto& vm : parsed.config->vms) {
+      log::info("plan: would start guest",
+                {log::field("name", vm.name),
+                 log::field("cpus", vm.cpus.size()),
+                 log::field("memory", cfg::format_bytes(vm.memory_bytes)),
+                 log::field("network",
+                            vm.network ? cfg::to_string(*vm.network) : "?")});
+    }
+    log::info("dry-run complete; not launching (Phase 3)", {});
+    return 0;
+  }
 
   log::warn(
-      "no runtime engine yet: this is the Phase 1 skeleton — parsing, "
-      "reconcile, and the control socket are not implemented",
+      "config is valid but the runtime engine is not implemented yet "
+      "(reconcile, QEMU launch, and the control socket arrive in Phase 3)",
       {});
   log::info("hypercored exiting cleanly", {});
   return 0;

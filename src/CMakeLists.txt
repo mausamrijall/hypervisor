@@ -9,7 +9,7 @@ add_executable(hypercored
   main.cpp)
 
 target_link_libraries(hypercored
-  PRIVATE hypercore_common)
+  PRIVATE hypercore_common hypercore_config)
 
 set_target_properties(hypercored PROPERTIES OUTPUT_NAME hypercored)
 
