@@ -1,0 +1,94 @@
+#!/bin/sh
+# hypercore-init — PID 1 for the hypercore boot environment.
+#
+# WHY A CUSTOM PID 1 (not systemd):
+#   hypercore is a single-purpose appliance: the machine exists only to run
+#   hypercored and its guests. systemd would add tens of MB and dozens of units
+#   to the initramfs, slow the boot with generator/dbus/journal machinery, and
+#   pull in a large dependency surface — all counter to the project's
+#   "Firecracker speed, minus the bloat" goal. A ~100-line shell PID 1 gives us
+#   exactly what an appliance needs: mount, quiet the console, start one daemon,
+#   supervise it, and hand the TTY to the dashboard. The tradeoff is that we
+#   own service supervision ourselves (a respawn loop below) instead of getting
+#   it from systemd — acceptable for a fixed, one-service workload.
+#
+# As PID 1 we must NEVER exit (that panics the kernel). Every path ends in the
+# supervision loop or an emergency shell.
+
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+
+log() { echo "[hypercore-init] $*"; }
+
+# --- 1. Mount the pseudo-filesystems the daemon and guests need -------------
+mount -t proc     proc     /proc                2>/dev/null
+mount -t sysfs    sysfs    /sys                 2>/dev/null
+mount -t devtmpfs devtmpfs /dev                 2>/dev/null
+mount -t tmpfs    tmpfs    /run    -o mode=0755 2>/dev/null
+mount -t tmpfs    tmpfs    /tmp    -o mode=1777 2>/dev/null
+# cgroup v2 for future per-guest resource accounting.
+mkdir -p /sys/fs/cgroup 2>/dev/null
+mount -t cgroup2  cgroup2  /sys/fs/cgroup       2>/dev/null
+
+mkdir -p /run/hypercore /var/lib/hypercore
+
+# --- 2. Suppress kernel log noise on the console ----------------------------
+# Keep only emergencies on the console so the dashboard isn't scribbled over by
+# driver chatter. (Boot cmdline should also pass `quiet loglevel=3`.)
+echo 1 > /proc/sys/kernel/printk 2>/dev/null
+
+# --- 3. Sanity: is hardware virt available? ---------------------------------
+if [ ! -e /dev/kvm ]; then
+  log "WARNING: /dev/kvm not present — guests will not accelerate."
+fi
+
+# --- 4. Locate config (default, overridable via kernel cmdline) -------------
+CONFIG=/etc/hypercore/hypervisor.cfg
+for arg in $(cat /proc/cmdline 2>/dev/null); do
+  case "$arg" in
+    hypercore.config=*) CONFIG="${arg#hypercore.config=}" ;;
+    hypercore.debug)    HYPERCORE_DEBUG=1 ;;
+  esac
+done
+
+SOCKET=/run/hypercore.sock
+RUNTIME=/run/hypercore
+
+# --- 5. Start hypercored, supervised ----------------------------------------
+# Run the daemon in the background under a respawn loop: if it ever exits we
+# log and restart it (this is the supervision systemd would otherwise give us).
+start_daemon_supervisor() {
+  while true; do
+    log "starting hypercored (config=$CONFIG)"
+    hypercored --config "$CONFIG" --socket "$SOCKET" \
+               --runtime-dir "$RUNTIME" --log-format logfmt
+    rc=$?
+    log "hypercored exited (rc=$rc); respawning in 2s"
+    sleep 2
+  done
+}
+start_daemon_supervisor &
+DAEMON_SUP_PID=$!
+
+# Give the daemon a moment to open its control socket before the dashboard
+# dials it. Poll rather than sleep-blindly.
+i=0
+while [ ! -S "$SOCKET" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i+1)); done
+
+# --- 6. Debug escape hatch --------------------------------------------------
+if [ "${HYPERCORE_DEBUG:-0}" = "1" ]; then
+  log "hypercore.debug set — dropping to a shell instead of the dashboard"
+  exec setsid sh -c 'exec sh </dev/console >/dev/console 2>&1'
+fi
+
+# --- 7. Hand the local TTY to the dashboard, supervised ---------------------
+# The dashboard is the machine's "face". If it dies (or the user quits), we
+# relaunch it — PID 1 must not fall through to the end.
+log "starting dashboard on console"
+while true; do
+  setsid hypercore --socket "$SOCKET" dashboard <>/dev/console >/dev/console 2>&1
+  log "dashboard exited; restarting in 1s (set hypercore.debug for a shell)"
+  sleep 1
+done
+
+# Unreachable, but as a final belt-and-braces guard never let PID 1 return.
+exec sh </dev/console >/dev/console 2>&1

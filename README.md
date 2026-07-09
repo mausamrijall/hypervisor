@@ -24,7 +24,7 @@ is testable before the next begins. See
 | 2 | TOML config schema + parser + validator + unit tests | ✅ |
 | 3 | Daemon: state reconcile, QEMU launch, CPU pinning, control socket, health checks | ✅ |
 | 4 | CLI subcommands + live TTY dashboard | ✅ |
-| 5 | Minimal init + boot environment | — |
+| 5 | Minimal init + boot environment | ✅ |
 | 6 | Rufus-flashable ISO builder | — |
 
 ## Architecture at a glance
