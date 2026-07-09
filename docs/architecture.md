@@ -107,7 +107,7 @@ dependency — C++20 `<format>` suffices in a minimal environment.
 | 3 | Daemon: reconcile, QEMU launch, pinning, control socket, health checks | ✅ done |
 | 4 | CLI subcommands + live TTY dashboard | ✅ done |
 | 5 | init + boot environment | ✅ done |
-| 6 | ISO builder | — |
+| 6 | ISO builder | ✅ done |
 
 ## Config module (Phase 2)
 

@@ -25,7 +25,7 @@ is testable before the next begins. See
 | 3 | Daemon: state reconcile, QEMU launch, CPU pinning, control socket, health checks | ✅ |
 | 4 | CLI subcommands + live TTY dashboard | ✅ |
 | 5 | Minimal init + boot environment | ✅ |
-| 6 | Rufus-flashable ISO builder | — |
+| 6 | Rufus-flashable ISO builder | ✅ |
 
 ## Architecture at a glance
 

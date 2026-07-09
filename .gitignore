@@ -24,3 +24,7 @@ testguest/vmlinuz
 
 # OS cruft
 .DS_Store
+
+# ISO builder intermediate artifacts (Phase 6)
+/build/iso-work/
+/build/hypercore.iso
