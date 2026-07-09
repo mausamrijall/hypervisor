@@ -32,4 +32,11 @@ bool agent_request_shutdown(const std::string& socket_path,
                             std::chrono::milliseconds timeout,
                             std::string& err);
 
+// Query the guest's primary non-loopback IPv4 address via
+// guest-network-get-interfaces. Returns "" if the agent is unreachable, has no
+// such address yet, or the reply can't be understood. Best-effort: used to
+// populate the SSH endpoint for bridged guests.
+std::string agent_get_ipv4(const std::string& socket_path,
+                           std::chrono::milliseconds timeout);
+
 }  // namespace hypercore::core

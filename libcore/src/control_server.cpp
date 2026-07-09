@@ -130,7 +130,12 @@ std::string ControlServer::status_json(const VmRuntime& rt) const {
   o << "]"
     << ",\"cpus_verified\":" << (rt.cpus_verified ? "true" : "false")
     << ",\"memory_bytes\":" << rt.memory_bytes
+    << ",\"rss_bytes\":" << rt.rss_bytes
+    << ",\"cpu_percent\":" << static_cast<long long>(rt.cpu_percent * 10) / 10.0
     << ",\"network\":\"" << config::to_string(rt.network) << "\""
+    << ",\"ip\":\"" << jesc(rt.ip) << "\""
+    << ",\"ssh_port\":" << rt.ssh_port
+    << ",\"console_log\":\"" << jesc(rt.serial_log) << "\""
     << ",\"restart\":\"" << config::to_string(rt.restart) << "\""
     << ",\"uptime_secs\":" << secs
     << ",\"restarts\":" << rt.restarts

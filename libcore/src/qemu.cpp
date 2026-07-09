@@ -52,6 +52,20 @@ LaunchSpec spec_from_vm(const config::VmConfig& vm,
       vm.guest_agent ? *vm.guest_agent
                      : runtime_dir + "/" + vm.name + ".agent.sock";
   s.pidfile = pidfile_path(runtime_dir, vm.name);
+  // Persist the console so `hypercore logs <name>` can read it.
+  s.serial_log = runtime_dir + "/" + vm.name + ".console.log";
+
+  // For user-mode networking, derive a stable SSH host-forward port from the
+  // guest name so it survives daemon restarts / adoption (the same guest always
+  // maps to the same 127.0.0.1:PORT). Range 20000-29999 keeps clear of the
+  // ephemeral range and common services. Collisions between two guests hashing
+  // equal are unlikely and, if they occur, the second QEMU simply fails to bind
+  // that VM (reported as a launch failure) rather than silently misrouting.
+  if (s.network == config::Network::User) {
+    std::uint32_t h = 2166136261u;  // FNV-1a
+    for (char c : vm.name) { h ^= static_cast<unsigned char>(c); h *= 16777619u; }
+    s.ssh_hostfwd_port = 20000 + static_cast<int>(h % 10000);
+  }
   return s;
 }
 
@@ -122,10 +136,17 @@ std::vector<std::string> build_argv(const LaunchSpec& spec) {
 
   // Networking.
   switch (spec.network) {
-    case config::Network::User:
-      add("-netdev"); add("user,id=n0");
+    case config::Network::User: {
+      // SLIRP user networking + an SSH host-forward so `hypercore ssh <name>`
+      // can reach the guest at 127.0.0.1:<port> (guest port 22).
+      std::string netdev = "user,id=n0";
+      if (spec.ssh_hostfwd_port > 0)
+        netdev += ",hostfwd=tcp:127.0.0.1:" +
+                  std::to_string(spec.ssh_hostfwd_port) + "-:22";
+      add("-netdev"); add(netdev);
       add("-device"); add("virtio-net-pci,netdev=n0");
       break;
+    }
     case config::Network::Bridge:
       add("-netdev"); add("bridge,id=n0,br=br0");
       add("-device"); add("virtio-net-pci,netdev=n0");

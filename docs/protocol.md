@@ -135,13 +135,28 @@ Used by `status` (as `data`) and `list` (as elements of `data.vms`):
   "cpus": [2, 3],
   "cpus_verified": true,
   "memory_bytes": 2147483648,
-  "network": "bridge",
+  "rss_bytes": 601358336,
+  "cpu_percent": 7.9,
+  "network": "user",
+  "ip": "127.0.0.1",
+  "ssh_port": 27825,
+  "console_log": "/run/hypercore/web.console.log",
   "restart": "on-failure",
-  "guest_agent": "/run/hypercore/web.agent.sock",
   "uptime_secs": 3600,
-  "restarts": 0
+  "restarts": 0,
+  "adopted": false
 }
 ```
+
+Phase-4 fields consumed by the CLI/dashboard:
+- `rss_bytes` / `cpu_percent` — host-side resident memory and CPU% of the QEMU
+  process, sampled from `/proc/<pid>` between health ticks.
+- `ip` / `ssh_port` — the SSH endpoint. For user networking, `ip` is
+  `127.0.0.1` and `ssh_port` is the per-guest host-forwarded port (guest:22).
+  For bridge networking, `ip` is the guest address learned via the guest agent
+  and `ssh_port` is 0 (meaning port 22). Empty `ip` means "not yet known".
+- `console_log` — path the daemon captured the guest serial console to; `logs`
+  reads it.
 
 - `cpus_verified` reflects the read-back check against `/proc/<pid>/status`
   `Cpus_allowed_list` (Phase 3 requirement): `true` only if the kernel confirms

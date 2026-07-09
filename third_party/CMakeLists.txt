@@ -14,3 +14,11 @@ target_include_directories(tomlplusplus
 
 # toml++ needs C++17 minimum; we build at C++20 project-wide already.
 target_compile_features(tomlplusplus INTERFACE cxx_std_17)
+
+# nlohmann/json (single header) — used by the CLI to parse daemon responses.
+# Same rationale as toml++: vendored, header-only, no build-time fetch. SYSTEM
+# so its warnings don't pollute our build.
+add_library(nlohmann_json INTERFACE)
+target_include_directories(nlohmann_json
+  SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(nlohmann_json INTERFACE cxx_std_17)

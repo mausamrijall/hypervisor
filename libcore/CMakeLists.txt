@@ -13,11 +13,18 @@
 #   supervisor.cpp    ties launch/pin/health/restart together.
 #   control_server.cpp  ndjson control socket.                     protocol.md
 
+# A tiny standalone socket-client lib. Split out so the CLI (Phase 4) can dial
+# the control socket without linking the whole runtime engine (QEMU launch,
+# process management, etc.), which it has no business depending on.
+add_library(hypercore_usock STATIC src/usock.cpp)
+target_include_directories(hypercore_usock
+  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
 add_library(hypercore_core STATIC
   src/capabilities.cpp
   src/affinity.cpp
   src/pidfile.cpp
-  src/usock.cpp
+  src/proc_stats.cpp
   src/qemu.cpp
   src/qmp.cpp
   src/guest_agent.cpp
@@ -29,7 +36,7 @@ target_include_directories(hypercore_core
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 target_link_libraries(hypercore_core
-  PUBLIC hypercore_config
+  PUBLIC hypercore_config hypercore_usock
   PRIVATE hypercore_common)
 
 # Diagnostic helper: prints detected host capabilities as JSON. Used by the

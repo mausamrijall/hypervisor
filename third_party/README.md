@@ -23,3 +23,17 @@ dependency.
 
 Replace `toml.hpp` with the amalgamation from the desired upstream release tag
 and update the version above. Do not hand-edit the header.
+
+## `json.hpp` — nlohmann/json
+
+- **Upstream:** https://github.com/nlohmann/json
+- **Version:** v3.11.3 (pinned)
+- **Form:** official single-header release (`json.hpp`).
+- **License:** MIT (SPDX header in the file).
+
+### Why committed single header
+
+Same reasoning as toml++: no build-time fetch, offline-friendly for the ISO
+build, header-only. Used **only by the CLI** to parse the daemon's ndjson
+responses — the daemon itself never links it (it does not parse JSON on its
+privileged control path).

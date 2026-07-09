@@ -105,7 +105,7 @@ dependency — C++20 `<format>` suffices in a minimal environment.
 | 1 | Repo scaffolding, CMake, CI, structured logging, runnable skeletons | ✅ done |
 | 2 | TOML config schema + parser + validator + unit tests | ✅ done |
 | 3 | Daemon: reconcile, QEMU launch, pinning, control socket, health checks | ✅ done |
-| 4 | CLI subcommands + live TTY dashboard | ⏳ next |
+| 4 | CLI subcommands + live TTY dashboard | ✅ done |
 | 5 | init + boot environment | — |
 | 6 | ISO builder | — |
 

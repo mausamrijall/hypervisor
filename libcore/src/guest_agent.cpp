@@ -86,4 +86,42 @@ bool agent_request_shutdown(const std::string& socket_path,
   return true;
 }
 
+std::string agent_get_ipv4(const std::string& socket_path,
+                           std::chrono::milliseconds timeout) {
+  UnixClient c;
+  std::string err;
+  if (!c.connect(socket_path, timeout, err)) return "";
+  // Sync, then query interfaces.
+  c.write_all("{\"execute\":\"guest-sync\",\"arguments\":{\"id\":7}}\n", err);
+  std::string ignore;
+  c.read_line(timeout, ignore);
+  if (!c.write_all("{\"execute\":\"guest-network-get-interfaces\"}\n", err))
+    return "";
+  auto line = c.read_line(timeout, err);
+  if (!line) return "";
+
+  // Hand-scan for the first non-loopback IPv4. We deliberately avoid a JSON
+  // parser on the daemon's privileged read path; the shape we need
+  // ("ip-address":"<v4>") is flat enough to extract safely. IPv6 values
+  // contain ':' and are skipped; 127.* is skipped.
+  const std::string key = "\"ip-address\":";
+  std::size_t pos = 0;
+  while ((pos = line->find(key, pos)) != std::string::npos) {
+    pos += key.size();
+    // Skip spaces and the opening quote.
+    while (pos < line->size() && (*line)[pos] == ' ') ++pos;
+    if (pos >= line->size() || (*line)[pos] != '"') continue;
+    ++pos;
+    std::size_t end = line->find('"', pos);
+    if (end == std::string::npos) break;
+    std::string addr = line->substr(pos, end - pos);
+    pos = end + 1;
+    if (addr.find(':') != std::string::npos) continue;   // IPv6
+    if (addr.rfind("127.", 0) == 0) continue;            // loopback
+    if (addr.empty()) continue;
+    return addr;
+  }
+  return "";
+}
+
 }  // namespace hypercore::core

@@ -23,7 +23,7 @@ is testable before the next begins. See
 | 1 | Repo scaffolding, CMake build, CI, structured logging, runnable skeletons | ✅ |
 | 2 | TOML config schema + parser + validator + unit tests | ✅ |
 | 3 | Daemon: state reconcile, QEMU launch, CPU pinning, control socket, health checks | ✅ |
-| 4 | CLI subcommands + live TTY dashboard | ⏳ next |
+| 4 | CLI subcommands + live TTY dashboard | ✅ |
 | 5 | Minimal init + boot environment | — |
 | 6 | Rufus-flashable ISO builder | — |
 
@@ -75,16 +75,20 @@ ctest --test-dir build --output-on-failure
 Try the skeletons:
 
 ```sh
-./build/bin/hypercored --help
-./build/bin/hypercored --config config/hypervisor.cfg          # logfmt logs
-./build/bin/hypercored --log-format json --config config/hypervisor.cfg
-./build/bin/hypercore  --help
-./build/bin/hypercore  list        # stub: prints "not implemented" (Phase 4)
+./build/bin/hypercored --config config/hypervisor.cfg           # run the daemon
+./build/bin/hypercored --reconcile --dry-run -c config/hypervisor.cfg  # plan only
+
+# CLI (talks to the daemon over the control socket):
+./build/bin/hypercore --socket /run/hypercore.sock list
+./build/bin/hypercore --socket /run/hypercore.sock status web
+./build/bin/hypercore --socket /run/hypercore.sock dashboard     # live TTY view
+./build/bin/hypercore --socket /run/hypercore.sock ssh web        # exec ssh
 ```
 
-Phase 1 is a runnable skeleton: the daemon parses flags, emits structured logs,
-and exits cleanly; the CLI recognizes its full subcommand surface. The engine
-(config parsing, reconcile, QEMU, socket) is filled in over Phases 2–4.
+The daemon launches KVM guests with verified CPU pinning, reconciles desired vs
+actual state, and serves the control socket; the CLI is a pure client that
+renders daemon state (list/status/start/stop/logs/ssh + a live dashboard). See
+[docs/testing.md](docs/testing.md) for how to run it end to end.
 
 ## Scope (v1)
 

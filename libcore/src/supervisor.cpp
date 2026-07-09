@@ -45,6 +45,8 @@ Supervisor::Supervisor(config::Config cfg, SupervisorOptions opts)
     LaunchSpec s = spec_for(vm);
     rt.agent_socket = s.guest_agent_socket;
     rt.qmp_socket = s.qmp_socket;
+    rt.serial_log = s.serial_log;
+    rt.ssh_port = s.ssh_hostfwd_port;
     rt_[vm.name] = std::move(rt);
   }
 }
@@ -168,6 +170,13 @@ bool Supervisor::start(const std::string& name, std::string& err) {
   rt.consecutive_health_failures = 0;
   rt.started_at = std::chrono::steady_clock::now();
   rt.adopted = false;
+  rt.sampler.reset();  // fresh CPU baseline for the new process
+  rt.cpu_percent = 0.0;
+  rt.rss_bytes = 0;
+  rt.ip.clear();
+  // For user networking the SSH endpoint is the host-forwarded loopback port.
+  if (rt.network == config::Network::User && rt.ssh_port > 0)
+    rt.ip = "127.0.0.1";
   // Persist the launch fingerprint so a separate process can detect drift.
   rt.fingerprint = fingerprint(*vm);
   std::string merr;
@@ -182,9 +191,19 @@ StopResult Supervisor::stop(const std::string& name) {
   auto rit = rt_.find(name);
   if (rit == rt_.end()) return {StopOutcome::Error, "unknown vm"};
   VmRuntime& rt = rit->second;
+  // Clear live host-sampled stats so a stopped guest never shows stale CPU/RSS,
+  // and reset health to Unknown (a stopped guest has no health signal).
+  auto clear_stats = [&] {
+    rt.cpu_percent = 0.0;
+    rt.rss_bytes = 0;
+    rt.ip.clear();
+    rt.health = Health::Unknown;
+    rt.sampler.reset();
+  };
   if (rt.pid <= 0 || !pid_alive(rt.pid)) {
     rt.state = VmState::Stopped;
     rt.pid = 0;
+    clear_stats();
     remove_pidfile(opts_.runtime_dir, name);
     return {StopOutcome::AlreadyDead, "not running"};
   }
@@ -196,6 +215,7 @@ StopResult Supervisor::stop(const std::string& name) {
   rt.state = VmState::Stopped;
   rt.pid = 0;
   rt.health = Health::Unknown;
+  clear_stats();
   remove_pidfile(opts_.runtime_dir, name);
   remove_meta(opts_.runtime_dir, name);
   log::info("guest stopped",
@@ -244,8 +264,16 @@ void Supervisor::health_tick() {
     // 1. Process liveness: a dead QEMU is an immediate failure.
     if (rt.pid <= 0 || !pid_alive(rt.pid)) {
       rt.health = Health::Unhealthy;
+      rt.cpu_percent = 0.0;
+      rt.rss_bytes = 0;
       handle_failure(rt, "process exited");
       continue;
+    }
+
+    // Sample host-side CPU%/RSS of the QEMU process for the dashboard.
+    if (rt.sampler.sample(rt.pid)) {
+      rt.cpu_percent = rt.sampler.cpu_percent();
+      rt.rss_bytes = rt.sampler.rss_bytes();
     }
 
     // 2. Guest-agent probe (only if the guest has an agent channel).
@@ -256,6 +284,12 @@ void Supervisor::health_tick() {
     AgentPing p =
         agent_ping(rt.agent_socket, ++health_sync_counter_, opts_.health_timeout);
     if (p.alive) {
+      // Opportunistically refresh the guest IP (bridge networking) while the
+      // agent is responsive and we don't have one yet.
+      if (rt.ip.empty() && rt.network == config::Network::Bridge) {
+        std::string ip = agent_get_ipv4(rt.agent_socket, opts_.health_timeout);
+        if (!ip.empty()) rt.ip = ip;
+      }
       rt.health = Health::Healthy;
       rt.consecutive_health_failures = 0;
       if (rt.state == VmState::Unhealthy) rt.state = VmState::Running;

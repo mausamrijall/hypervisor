@@ -45,6 +45,12 @@ struct LaunchSpec {
   std::string pidfile;
   std::string serial_log;          // empty => inherit; tests point at a file
 
+  // For user-mode networking, the host port forwarded to the guest's SSH port
+  // (22). `ssh <name>` connects to 127.0.0.1:ssh_hostfwd_port. 0 => none.
+  // Chosen per-guest by the daemon (see spec_from_vm). Ignored for bridge,
+  // where the guest gets a routable IP the daemon learns via the guest agent.
+  int ssh_hostfwd_port = 0;
+
   std::string qemu_binary = "qemu-system-x86_64";
   bool enable_kvm = true;
 };

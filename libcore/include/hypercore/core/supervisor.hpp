@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "hypercore/config/types.hpp"
+#include "hypercore/core/proc_stats.hpp"
 #include "hypercore/core/qemu.hpp"
 #include "hypercore/core/qmp.hpp"
 #include "hypercore/core/reconcile.hpp"
@@ -44,6 +45,14 @@ struct VmRuntime {
   int restarts = 0;
   int consecutive_health_failures = 0;
   bool adopted = false;  // discovered via pid file on startup
+
+  // Phase 4: fields the CLI/dashboard consume.
+  std::string serial_log;         // console capture path for `logs`
+  int ssh_port = 0;               // user-net hostfwd port (0 => none)
+  std::string ip;                 // guest IP learned via agent (bridge); may be ""
+  double cpu_percent = 0.0;       // host-side CPU% of the QEMU process
+  std::uint64_t rss_bytes = 0;    // host-side resident memory of QEMU
+  ProcSampler sampler;            // rolling CPU baseline (not serialized)
 };
 
 // Provides the LaunchSpec for a VM. Production default lives in the .cpp.
