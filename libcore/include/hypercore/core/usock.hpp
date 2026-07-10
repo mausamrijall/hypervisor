@@ -12,6 +12,11 @@ namespace hypercore::core {
 
 class UnixClient {
  public:
+  // Hard cap on a single line read from a (possibly untrusted) peer, so a peer
+  // that never sends '\n' cannot exhaust daemon memory. Guest-agent/QMP replies
+  // of interest are far smaller than this.
+  static constexpr std::size_t kMaxLineBytes = 64 * 1024;
+
   UnixClient() = default;
   ~UnixClient();
   UnixClient(const UnixClient&) = delete;

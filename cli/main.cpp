@@ -11,6 +11,7 @@
 #include <string_view>
 #include <vector>
 
+#include <arpa/inet.h>
 #include <unistd.h>
 
 #include "client.hpp"
@@ -227,16 +228,42 @@ int cmd_ssh(Client& c, const std::string& name, char** envp) {
                  name.c_str());
     return 5;
   }
+  // Defense in depth (HC-2026-001): the `ip` originates from the guest agent
+  // (untrusted). The daemon already restricts it to a valid IPv4 literal, but
+  // the CLI must not trust that blindly — re-validate here, and even then never
+  // let ssh interpret it as an option. A value beginning with '-' or anything
+  // that is not a dotted-quad is refused outright.
+  auto is_ipv4 = [](const std::string& s) {
+    if (s.empty() || s.size() > 15) return false;
+    struct in_addr a{};
+    return inet_pton(AF_INET, s.c_str(), &a) == 1;
+  };
+  if (!is_ipv4(ip)) {
+    std::fprintf(stderr,
+                 "hypercore: refusing to ssh to '%s' — endpoint '%s' is not a "
+                 "valid IPv4 address (guest may be reporting a malicious value)\n",
+                 name.c_str(), ip.c_str());
+    return 5;
+  }
   int p = port > 0 ? port : 22;
   std::string portstr = std::to_string(p);
   std::fprintf(stderr, "hypercore: ssh -> %s:%s\n", ip.c_str(), portstr.c_str());
   // exec ssh, replacing this process (so the user gets a normal ssh session).
+  // Harden the invocation: disable ProxyCommand/LocalCommand so even a bug that
+  // let a hostile string through cannot spawn a local command, and pass "--" so
+  // the destination can never be parsed as an option.
   std::vector<char*> args;
   std::string ssh = "ssh";
-  args.push_back(ssh.data());
   std::string popt = "-p";
+  std::string no_proxy = "-oProxyCommand=none";
+  std::string no_local = "-oPermitLocalCommand=no";
+  std::string dashdash = "--";
+  args.push_back(ssh.data());
   args.push_back(popt.data());
   args.push_back(portstr.data());
+  args.push_back(no_proxy.data());
+  args.push_back(no_local.data());
+  args.push_back(dashdash.data());
   args.push_back(ip.data());
   args.push_back(nullptr);
   execvpe("ssh", args.data(), envp);

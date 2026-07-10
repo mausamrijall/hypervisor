@@ -293,7 +293,19 @@ void ControlServer::run(const std::atomic<bool>& stop,
     }
     auto nl = req.find('\n');
     std::string line = nl == std::string::npos ? req : req.substr(0, nl);
-    std::string resp = handle_request(line);
+    // Defense in depth: handle_request parses untrusted socket input. Guarantee
+    // that NO exception (a missed map::at, std::bad_alloc, stoi edge case, or
+    // any future code path) can ever unwind out of the accept loop and take the
+    // daemon down. A malformed request must, at worst, get an error reply.
+    std::string resp;
+    try {
+      resp = handle_request(line);
+    } catch (const std::exception& e) {
+      resp = err_response("?", "internal",
+                          std::string("request handling error: ") + e.what());
+    } catch (...) {
+      resp = err_response("?", "internal", "unknown request handling error");
+    }
     resp.push_back('\n');
     ssize_t w = ::write(cfd, resp.data(), resp.size());
     (void)w;

@@ -126,6 +126,14 @@ std::optional<std::string> UnixClient::read_line(
       return std::nullopt;
     }
     buf_.append(chunk, static_cast<std::size_t>(n));
+    // Bound the accumulated line: a peer (e.g. an untrusted guest agent) that
+    // streams bytes without ever sending '\n' must not be able to exhaust the
+    // daemon's memory. Guest-agent replies of interest are well under 64 KiB.
+    if (buf_.size() > kMaxLineBytes) {
+      err = "line too long (peer sent > " + std::to_string(kMaxLineBytes) +
+            " bytes without a newline)";
+      return std::nullopt;
+    }
   }
 }
 

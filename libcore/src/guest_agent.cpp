@@ -1,5 +1,7 @@
 #include "hypercore/core/guest_agent.hpp"
 
+#include <arpa/inet.h>
+
 #include <string>
 
 #include "hypercore/core/usock.hpp"
@@ -12,6 +14,19 @@ namespace {
 // and fixed-shape, so a substring check is sufficient and safe here.
 bool contains(const std::string& hay, const std::string& needle) {
   return hay.find(needle) != std::string::npos;
+}
+
+// Strictly validate that a string is a canonical dotted-quad IPv4 address.
+// The guest agent is UNTRUSTED input: whatever it returns as "ip-address" is
+// attacker-controlled. Any value that reaches the operator's `ssh` invocation
+// must be a real IPv4 literal — never a hostname, an ssh option (`-o…`), or a
+// string with spaces. inet_pton(AF_INET) accepts only well-formed dotted
+// quads, which structurally cannot begin with '-' or contain shell/argv
+// metacharacters. See docs report HC-2026-001.
+bool is_valid_ipv4(const std::string& s) {
+  if (s.empty() || s.size() > 15) return false;  // "255.255.255.255" = 15
+  struct in_addr addr{};
+  return inet_pton(AF_INET, s.c_str(), &addr) == 1;
 }
 }  // namespace
 
@@ -118,7 +133,7 @@ std::string agent_get_ipv4(const std::string& socket_path,
     pos = end + 1;
     if (addr.find(':') != std::string::npos) continue;   // IPv6
     if (addr.rfind("127.", 0) == 0) continue;            // loopback
-    if (addr.empty()) continue;
+    if (!is_valid_ipv4(addr)) continue;                  // reject non-IPv4
     return addr;
   }
   return "";

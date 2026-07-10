@@ -53,6 +53,18 @@ struct LaunchSpec {
 
   std::string qemu_binary = "qemu-system-x86_64";
   bool enable_kvm = true;
+
+  // Privilege separation: when the daemon runs as root, each QEMU child drops
+  // to this uid/gid (via setgroups/setgid/setuid) in the forked child BEFORE
+  // execvp, so a guest/QEMU compromise does not hand an attacker root over host
+  // RAM. 0 means "do not drop" — used only when the daemon itself is already
+  // unprivileged (dev/test), where dropping is impossible and unnecessary.
+  // Populated by spec_from_vm from SupervisorOptions.
+  unsigned run_as_uid = 0;
+  unsigned run_as_gid = 0;
+  // Supplementary group to retain after the drop (typically the `kvm` group, so
+  // the unprivileged QEMU can still open /dev/kvm). 0 => keep none.
+  unsigned keep_gid = 0;
 };
 
 // Build a LaunchSpec for a real guest from its validated VmConfig. Endpoints

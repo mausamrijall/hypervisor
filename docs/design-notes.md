@@ -4,6 +4,46 @@ Running log of design decisions and flagged issues that later phases surfaced in
 earlier ones. Items marked **OPEN** are deferred to the testing + security audit
 phase for a decision, per the build-forward plan.
 
+## RESOLVED (security audit) — hardening pass
+
+Four hardening items were implemented during the security audit phase:
+
+1. **SSH argument injection (HC-2026-001, critical).** The guest agent is
+   untrusted; its reported IP flowed into the operator's `ssh` argv unvalidated,
+   letting a malicious guest redirect/inject the operator's SSH session. Fixed at
+   three layers: `agent_get_ipv4()` now accepts only `inet_pton(AF_INET)`-valid
+   dotted quads; the CLI `cmd_ssh` re-validates the IP and invokes ssh with
+   `-oProxyCommand=none -oPermitLocalCommand=no --` so a hostile value can never
+   be parsed as an option or spawn a local command. Report:
+   `../reports/hypercore-guest-agent-ssh-argument-injection.md`.
+
+2. **QEMU privilege separation.** The daemon runs as root (PID 1). Each forked
+   QEMU child now drops to an unprivileged user (`--qemu-user`, default
+   `hypercore`) via `setgroups`/`setgid`/`setuid` BEFORE `execvp`, keeping only
+   the `kvm` group so it can open `/dev/kvm`. The drop is verified (re-`setuid(0)`
+   must fail; uid must actually change) and **fail-closed**: if the daemon is
+   root but can't resolve a non-root target, or the drop can't be verified, it
+   refuses to launch rather than run QEMU as root. So a guest/QEMU escape no
+   longer yields root over host RAM. The ISO image provisions the `hypercore`
+   user (uid/gid 976) so this resolves at boot.
+
+3. **Unbounded read DoS.** `UnixClient::read_line` (used against the untrusted
+   guest-agent socket) now caps a single line at `kMaxLineBytes` (64 KiB) so a
+   guest streaming bytes without a newline cannot exhaust daemon memory.
+
+4. **Control-parser panic safety.** `handle_request` is wrapped so no exception
+   (missed `map::at`, `bad_alloc`, `stoi` edge cases) can unwind out of the
+   accept loop and kill the daemon; malformed input yields an error reply. A new
+   `tests/hardening_test.cpp` fuzzes the parser with empty/whitespace/
+   non-printable/overlong/proto-overflow inputs and asserts it never throws.
+
+**Memory-boundary audit result:** the libconfig parser and control-socket path
+use `std::string`/`std::string_view` + toml++ throughout; the only fixed buffers
+(`char buf[512]`, `char chunk[1024]`) are read-bounded by `sizeof`, both
+`strncpy` into `sun_path` are length-guarded and NUL-safe, and every manual index
+in `guest_agent`/`control_server` is bounds-checked before dereference. No buffer
+overflow was found.
+
 ## OPEN — health-failed guest with `restart = "never"` is left running
 
 **Surfaced in:** Phase 4 (dashboard showed `state=failed` for a guest whose QEMU

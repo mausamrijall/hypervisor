@@ -62,8 +62,15 @@ bool Supervisor::has_vm(const std::string& name) const {
 }
 
 LaunchSpec Supervisor::spec_for(const config::VmConfig& vm) const {
-  if (opts_.spec_provider) return opts_.spec_provider(vm);
-  return spec_from_vm(vm, opts_.runtime_dir);
+  LaunchSpec s =
+      opts_.spec_provider ? opts_.spec_provider(vm)
+                          : spec_from_vm(vm, opts_.runtime_dir);
+  // Thread the privilege-drop target through so every launched QEMU sheds root.
+  // (A spec_provider may pre-set these for tests; only fill if unset.)
+  if (s.run_as_uid == 0) s.run_as_uid = opts_.qemu_uid;
+  if (s.run_as_gid == 0) s.run_as_gid = opts_.qemu_gid;
+  if (s.keep_gid == 0) s.keep_gid = opts_.kvm_gid;
+  return s;
 }
 
 void Supervisor::adopt_existing() {

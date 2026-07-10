@@ -14,6 +14,11 @@ add_executable(reconcile_test reconcile_test.cpp)
 target_link_libraries(reconcile_test PRIVATE hypercore_core)
 add_test(NAME reconcile_test COMMAND reconcile_test)
 
+# Security hardening: control-parser robustness + IPv4 validation (no QEMU/KVM).
+add_executable(hardening_test hardening_test.cpp)
+target_link_libraries(hardening_test PRIVATE hypercore_core)
+add_test(NAME hardening_test COMMAND hardening_test)
+
 # --- Phase 1 binary smoke tests ---------------------------------------------
 add_test(
   NAME daemon_version

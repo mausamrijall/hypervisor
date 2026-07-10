@@ -114,6 +114,25 @@ else
   log "WARNING: qemu-system-x86_64 not on build host; not bundled (guests won't run)"
 fi
 
+# Unprivileged user for QEMU children (privilege separation). The daemon runs
+# as root (PID 1) and drops each QEMU to this user via --qemu-user, so a guest
+# escape cannot own host RAM as root. Provision a fixed uid/gid in the image so
+# getpwnam("hypercore") resolves at boot; without it the daemon fail-closes and
+# refuses to launch guests.
+HC_UID=976
+HC_GID=976
+cat > "$STAGE/etc/passwd" <<PASSWD
+root:x:0:0:root:/root:/bin/sh
+hypercore:x:${HC_UID}:${HC_GID}:hypercore qemu:/nonexistent:/sbin/nologin
+PASSWD
+cat > "$STAGE/etc/group" <<GROUP
+root:x:0:
+kvm:x:104:hypercore
+hypercore:x:${HC_GID}:
+GROUP
+mkdir -p "$STAGE/root"
+chmod 0700 "$STAGE/root"
+
 # Config + init.
 cp "$CONFIG" "$STAGE/etc/hypercore/hypervisor.cfg"
 cp "$INIT_SRC" "$STAGE/sbin/hypercore-init"

@@ -1,6 +1,7 @@
 #include "hypercore/core/qemu.hpp"
 
 #include <fcntl.h>
+#include <grp.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -206,6 +207,31 @@ LaunchResult launch(const LaunchSpec& spec, const std::string& runtime_dir) {
     // --- child ---
     // New session so the guest isn't killed by the daemon's controlling TTY.
     setsid();
+
+    // Privilege separation (defense against guest/QEMU escape): if asked to
+    // drop, shed all supplementary groups, then gid, then uid, BEFORE exec.
+    // Order matters — setgid must precede setuid, or we'd lose the privilege
+    // needed to change groups. After dropping we VERIFY the uid actually
+    // changed and that root cannot be regained; if anything is off we refuse to
+    // exec rather than run QEMU as root. Any failure here _exit()s the child
+    // with a distinct code so the parent's exec-confirmation loop reports it.
+    if (spec.run_as_uid != 0) {
+      // Retain only the kvm group (if given) as a supplementary group so the
+      // unprivileged QEMU can still open /dev/kvm; drop every other group.
+      if (spec.keep_gid != 0) {
+        gid_t keep = static_cast<gid_t>(spec.keep_gid);
+        if (setgroups(1, &keep) != 0) _exit(120);
+      } else {
+        if (setgroups(0, nullptr) != 0) _exit(120);
+      }
+      if (setgid(static_cast<gid_t>(spec.run_as_gid)) != 0) _exit(121);
+      if (setuid(static_cast<uid_t>(spec.run_as_uid)) != 0) _exit(122);
+      // Verify the drop stuck and is irreversible.
+      if (setuid(0) == 0) _exit(123);              // regained root => refuse
+      if (getuid() != spec.run_as_uid) _exit(124); // uid didn't actually change
+      if (geteuid() != spec.run_as_uid) _exit(124);
+    }
+
     // Silence stdio (serial already routed via -serial).
     int devnull = open("/dev/null", O_RDWR);
     if (devnull >= 0) {

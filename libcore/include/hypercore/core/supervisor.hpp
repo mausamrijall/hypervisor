@@ -64,6 +64,14 @@ struct SupervisorOptions {
   std::chrono::milliseconds health_timeout{1500};
   StopParams stop = {};
   SpecProvider spec_provider = nullptr;  // null => production disk-boot provider
+
+  // Privilege separation: uid/gid each QEMU child drops to before exec. 0 means
+  // "do not drop" (the daemon is already unprivileged, e.g. dev/test). The
+  // daemon populates this from --qemu-user when running as root. See qemu.cpp.
+  unsigned qemu_uid = 0;
+  unsigned qemu_gid = 0;
+  // Supplementary group (kvm) the dropped QEMU keeps so it can open /dev/kvm.
+  unsigned kvm_gid = 0;
 };
 
 class Supervisor {

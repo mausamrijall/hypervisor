@@ -22,6 +22,12 @@
 #include <string_view>
 #include <vector>
 
+#include <cerrno>
+#include <grp.h>
+#include <pwd.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include "hypercore/config/parser.hpp"
 #include "hypercore/config/validator.hpp"
 #include "hypercore/core/capabilities.hpp"
@@ -44,6 +50,7 @@ struct Options {
   std::string config_path = kDefaultConfig;
   std::string socket_path = kDefaultSocket;
   std::string runtime_dir = kDefaultRuntimeDir;
+  std::string qemu_user = "hypercore";  // unprivileged user QEMU children run as
   log::Level level = log::Level::Info;
   log::Format format = log::Format::Logfmt;
   bool dry_run = false;    // don't launch anything
@@ -64,6 +71,8 @@ void print_usage(const char* argv0) {
       "  -c, --config PATH   Config file (default: %s)\n"
       "  -s, --socket PATH   Control socket path (default: %s)\n"
       "      --runtime-dir D Runtime state dir for pid/sockets (default: %s)\n"
+      "      --qemu-user U   When run as root, drop each QEMU child to this\n"
+      "                      unprivileged user (default: hypercore)\n"
       "      --reconcile     Reconcile desired vs actual state. With --dry-run,\n"
       "                      print the diff (start/stop/restart) and exit\n"
       "                      WITHOUT touching any process.\n"
@@ -110,6 +119,10 @@ bool parse_args(int argc, char** argv, Options& opt, int& exit_code) {
       const char* v = needs_value(i, a);
       if (!v) return false;
       opt.runtime_dir = v;
+    } else if (a == "--qemu-user") {
+      const char* v = needs_value(i, a);
+      if (!v) return false;
+      opt.qemu_user = v;
     } else if (a == "--reconcile") {
       opt.reconcile = true;
     } else if (a == "--dry-run") {
@@ -200,6 +213,47 @@ int run(const Options& opt) {
 
   core::SupervisorOptions sopts;
   sopts.runtime_dir = opt.runtime_dir;
+
+  // Privilege separation: if we are root, resolve the unprivileged user QEMU
+  // children will drop to. Fail CLOSED — if we are root but can't resolve a
+  // non-root target, refuse to start rather than run guests as root (a guest
+  // escape would then own host RAM as root). If we're already unprivileged,
+  // there is nothing to drop and QEMU inherits our uid.
+  if (geteuid() == 0) {
+    errno = 0;
+    struct passwd* pw = getpwnam(opt.qemu_user.c_str());
+    if (!pw) {
+      log::error("cannot resolve --qemu-user; refusing to run QEMU as root",
+                 {log::field("user", opt.qemu_user)});
+      return 1;
+    }
+    if (pw->pw_uid == 0) {
+      log::error("--qemu-user resolves to root; refusing (privilege separation)",
+                 {log::field("user", opt.qemu_user)});
+      return 1;
+    }
+    sopts.qemu_uid = pw->pw_uid;
+    sopts.qemu_gid = pw->pw_gid;
+    // Resolve the kvm group so the dropped QEMU can still open /dev/kvm. Prefer
+    // the actual owning group of /dev/kvm; fall back to the "kvm" group name.
+    struct stat kvmst{};
+    if (stat("/dev/kvm", &kvmst) == 0 && kvmst.st_gid != 0) {
+      sopts.kvm_gid = kvmst.st_gid;
+    } else if (struct group* gr = getgrnam("kvm")) {
+      sopts.kvm_gid = gr->gr_gid;
+    } else {
+      log::warn("could not resolve kvm group; dropped QEMU may fail to open "
+                "/dev/kvm (guests won't accelerate)", {});
+    }
+    log::info("qemu children will drop privileges",
+              {log::field("user", opt.qemu_user),
+               log::field("uid", pw->pw_uid), log::field("gid", pw->pw_gid),
+               log::field("kvm_gid", sopts.kvm_gid)});
+  } else {
+    log::info("daemon is unprivileged; QEMU inherits current uid (no drop)",
+              {log::field("uid", static_cast<unsigned>(geteuid()))});
+  }
+
   core::Supervisor sup(*cfg, sopts);
 
   // --reconcile --dry-run: adopt (read-only discovery of running guests), then
