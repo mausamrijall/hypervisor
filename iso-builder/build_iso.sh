@@ -19,7 +19,12 @@ set -euo pipefail
 
 # --- args -------------------------------------------------------------------
 BUILD_DIR="${PWD}/build"          # where hypercored/hypercore were built
-KERNEL="/boot/vmlinuz-$(uname -r)"
+# Default kernel: prefer the running kernel, fall back to any vmlinuz in /boot.
+_default_kernel="/boot/vmlinuz-$(uname -r)"
+if [ ! -r "$_default_kernel" ]; then
+  _default_kernel="$(find /boot -maxdepth 1 -name 'vmlinuz-*' -type f | sort -V | tail -1)"
+fi
+KERNEL="${_default_kernel}"
 OUT="${PWD}/build/hypercore.iso"
 CONFIG="${PWD}/config/hypervisor.cfg"
 LABEL="HYPERCORE"
