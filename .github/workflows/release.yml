@@ -61,7 +61,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             squashfs-tools cpio gzip busybox-static \
             grub-common grub-pc-bin grub-efi-amd64-bin \
-            xorriso qemu-system-x86
+            mtools xorriso qemu-system-x86
 
       # Install the kernel package for the exact running kernel so that a
       # real vmlinuz lands in /boot. linux-image-generic is a meta-package

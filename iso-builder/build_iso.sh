@@ -232,7 +232,7 @@ GRUBCFG
 # ============================================================================
 if [ "$HAVE_GRUB_MKRESCUE" = "1" ] && [ "$HAVE_XORRISO" = "1" ]; then
   log "packaging ISO with grub-mkrescue"
-  grub-mkrescue -o "$OUT" "$ISO" --volid "$LABEL" 2>/dev/null
+  grub-mkrescue -o "$OUT" "$ISO" --volid "$LABEL"
   log "done: $OUT ($(du -h "$OUT" | cut -f1))"
 else
   log "SKIP final packaging: grub-mkrescue/xorriso not both present."
