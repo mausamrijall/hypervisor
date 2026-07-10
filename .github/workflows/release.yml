@@ -61,8 +61,18 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             squashfs-tools cpio gzip busybox-static \
             grub-common grub-pc-bin grub-efi-amd64-bin \
-            xorriso qemu-system-x86 \
+            xorriso qemu-system-x86
+
+      # Install the kernel package for the exact running kernel so that a
+      # real vmlinuz lands in /boot. linux-image-generic is a meta-package
+      # that doesn't reliably drop the image file on Azure-hosted runners.
+      - name: Install kernel image
+        run: |
+          sudo apt-get install -y --no-install-recommends \
+            "linux-image-$(uname -r)" || \
+          sudo apt-get install -y --no-install-recommends \
             linux-image-generic
+          ls -lh /boot/vmlinuz-* 2>/dev/null || { echo "ERROR: no vmlinuz in /boot"; ls /boot/; exit 1; }
 
       - name: Download binaries
         uses: actions/download-artifact@v4
@@ -78,8 +88,17 @@ jobs:
 
       - name: Locate kernel
         run: |
-          KERNEL_PATH=$(find /boot -maxdepth 1 -name 'vmlinuz-*' -type f | sort -V | tail -1)
-          echo "Found kernel: $KERNEL_PATH"
+          # Prefer exact running-kernel vmlinuz; fall back to newest in /boot.
+          KERNEL_PATH="/boot/vmlinuz-$(uname -r)"
+          if [ ! -r "$KERNEL_PATH" ]; then
+            KERNEL_PATH="$(find /boot -maxdepth 1 -name 'vmlinuz-*' -type f | sort -V | tail -1)"
+          fi
+          if [ -z "$KERNEL_PATH" ] || [ ! -r "$KERNEL_PATH" ]; then
+            echo "ERROR: no readable kernel found. /boot contents:"
+            ls -lh /boot/
+            exit 1
+          fi
+          echo "Using kernel: $KERNEL_PATH"
           echo "KERNEL_PATH=$KERNEL_PATH" >> "$GITHUB_ENV"
 
       - name: Build ISO
