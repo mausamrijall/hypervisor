@@ -1,0 +1,157 @@
+name: release
+
+# Trigger only on version tags — push v0.1.0, v1.2.3, etc.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+# One release at a time; don't cancel (a release in flight should finish).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # 1. Build binaries (GCC, RelWithDebInfo)
+  # ─────────────────────────────────────────────────────────────────────────
+  build:
+    name: Build binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build g++ \
+            qemu-system-x86 qemu-utils busybox-static cpio gzip
+
+      - name: Configure (Release)
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run tests
+        # Integration tests self-skip without /dev/kvm — unit tests always run.
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: hypercore-binaries
+          path: |
+            build/bin/hypercored
+            build/bin/hypercore
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 2. Build the bootable ISO
+  # ─────────────────────────────────────────────────────────────────────────
+  iso:
+    name: Build ISO
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ISO build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            squashfs-tools cpio gzip busybox-static \
+            grub-common grub-pc-bin grub-efi-amd64-bin \
+            xorriso qemu-system-x86
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: hypercore-binaries
+          path: build/bin
+
+      - name: Fix binary permissions
+        run: chmod +x build/bin/hypercored build/bin/hypercore
+
+      # Derive the bare version (strip the leading 'v') for naming the ISO.
+      - name: Set version env
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Build ISO
+        run: |
+          mkdir -p build
+          ./iso-builder/build_iso.sh \
+            --build-dir build \
+            --out "build/hypercore-${{ env.VERSION }}-x86_64.iso"
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hypercore-iso
+          path: "build/hypercore-${{ env.VERSION }}-x86_64.iso"
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 3. Create GitHub Release and attach the ISO
+  # ─────────────────────────────────────────────────────────────────────────
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: iso
+    permissions:
+      contents: write   # needed to create releases and upload assets
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version env
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Download ISO
+        uses: actions/download-artifact@v4
+        with:
+          name: hypercore-iso
+          path: dist/
+
+      - name: Generate SHA-256 checksum
+        working-directory: dist
+        run: sha256sum "hypercore-${{ env.VERSION }}-x86_64.iso" > "hypercore-${{ env.VERSION }}-x86_64.iso.sha256"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "hypercore ${{ github.ref_name }}"
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## hypercore ${{ github.ref_name }}
+
+            A developer-first, Type-1 hypervisor that boots headless from a USB into a minimal Linux + KVM/QEMU environment.
+
+            ### What's in the ISO
+
+            - Custom PID 1 (`hypercore-init`) → mounts squashfs root and `switch_root`s into it
+            - `hypercored` daemon — KVM/QEMU launch, CPU pinning, health checks, Unix control socket
+            - `hypercore` CLI — `list`, `start`, `stop`, `logs`, `ssh`, live TTY dashboard
+            - Bundled QEMU, busybox, default `hypervisor.cfg`
+            - Hybrid BIOS/UEFI boot via GRUB (normal + `hypercore.debug` recovery entry)
+
+            ### Flash to USB
+
+            **Linux/macOS**
+            ```sh
+            sudo dd if=hypercore-${{ env.VERSION }}-x86_64.iso of=/dev/sdX bs=4M status=progress oflag=sync
+            ```
+            **Windows** — open Rufus, select `hypercore-${{ env.VERSION }}-x86_64.iso`, choose **DD Image** mode, write.
+
+            ### Verify integrity
+            ```sh
+            sha256sum -c hypercore-${{ env.VERSION }}-x86_64.iso.sha256
+            ```
+
+            See [docs/iso.md](docs/iso.md) for full flashing and test-boot instructions, and [docs/boot.md](docs/boot.md) for the boot sequence.
+          files: |
+            dist/hypercore-${{ env.VERSION }}-x86_64.iso
+            dist/hypercore-${{ env.VERSION }}-x86_64.iso.sha256
