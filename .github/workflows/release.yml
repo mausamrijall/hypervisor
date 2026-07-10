@@ -72,6 +72,10 @@ jobs:
             "linux-image-$(uname -r)" || \
           sudo apt-get install -y --no-install-recommends \
             linux-image-generic
+          # vmlinuz-* files are installed 0600 (root-only) on Azure runners.
+          # Make them world-readable so the subsequent steps can access them
+          # without sudo.
+          sudo chmod a+r /boot/vmlinuz-* || true
           ls -lh /boot/vmlinuz-* 2>/dev/null || { echo "ERROR: no vmlinuz in /boot"; ls /boot/; exit 1; }
 
       - name: Download binaries
