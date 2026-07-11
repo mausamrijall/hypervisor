@@ -1,10 +1,12 @@
 #include "hypercore/core/supervisor.hpp"
 
+#include <csignal>
 #include <utility>
 
 #include "hypercore/core/affinity.hpp"
 #include "hypercore/core/guest_agent.hpp"
 #include "hypercore/core/pidfile.hpp"
+#include "hypercore/core/portmap.hpp"
 #include "hypercore/log.hpp"
 
 namespace hypercore::core {
@@ -13,12 +15,13 @@ namespace log = hypercore::log;
 
 const char* to_string(VmState s) {
   switch (s) {
-    case VmState::Stopped: return "stopped";
-    case VmState::Starting: return "starting";
-    case VmState::Running: return "running";
-    case VmState::Unhealthy: return "unhealthy";
-    case VmState::Stopping: return "stopping";
-    case VmState::Failed: return "failed";
+    case VmState::Stopped:      return "stopped";
+    case VmState::Starting:     return "starting";
+    case VmState::Running:      return "running";
+    case VmState::Unhealthy:    return "unhealthy";
+    case VmState::Stopping:     return "stopping";
+    case VmState::Failed:       return "failed";
+    case VmState::HealthPanic:  return "health_panic";
   }
   return "?";
 }
@@ -225,6 +228,7 @@ StopResult Supervisor::stop(const std::string& name) {
   clear_stats();
   remove_pidfile(opts_.runtime_dir, name);
   remove_meta(opts_.runtime_dir, name);
+  portmap_release(opts_.runtime_dir, name);
   log::info("guest stopped",
             {log::field("vm", name), log::field("outcome", to_string(res.outcome))});
   return res;
@@ -234,9 +238,28 @@ void Supervisor::handle_failure(VmRuntime& rt, const char* reason) {
   // Apply restart policy (#4). Never hardcode always-restart.
   switch (rt.restart) {
     case config::RestartPolicy::Never:
-      rt.state = VmState::Failed;
-      log::warn("guest failed; restart policy 'never' -> leaving stopped",
-                {log::field("vm", rt.name), log::field("reason", reason)});
+      // restart=never means we must NOT loop, but we must still reclaim
+      // resources. Issue SIGKILL so the QEMU process releases its pinned CPU
+      // cores and memory allocations immediately, then record HealthPanic so
+      // `hypercore list` shows a distinct, diagnostic state rather than the
+      // misleading generic "failed".
+      if (rt.pid > 0 && pid_alive(rt.pid)) {
+        ::kill(rt.pid, SIGKILL);
+        log::warn("guest killed (SIGKILL); restart policy 'never' -> health_panic",
+                  {log::field("vm", rt.name), log::field("reason", reason),
+                   log::field("pid", rt.pid)});
+      } else {
+        log::warn("guest exited; restart policy 'never' -> health_panic",
+                  {log::field("vm", rt.name), log::field("reason", reason)});
+      }
+      rt.state = VmState::HealthPanic;
+      rt.pid = 0;
+      rt.cpu_percent = 0.0;
+      rt.rss_bytes = 0;
+      rt.health = Health::Unhealthy;
+      rt.sampler.reset();
+      remove_pidfile(opts_.runtime_dir, rt.name);
+      portmap_release(opts_.runtime_dir, rt.name);
       break;
     case config::RestartPolicy::OnFailure:
     case config::RestartPolicy::Always: {

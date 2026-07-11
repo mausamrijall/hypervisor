@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "hypercore/core/pidfile.hpp"
+#include "hypercore/core/portmap.hpp"
 
 namespace hypercore::core {
 
@@ -56,16 +57,12 @@ LaunchSpec spec_from_vm(const config::VmConfig& vm,
   // Persist the console so `hypercore logs <name>` can read it.
   s.serial_log = runtime_dir + "/" + vm.name + ".console.log";
 
-  // For user-mode networking, derive a stable SSH host-forward port from the
-  // guest name so it survives daemon restarts / adoption (the same guest always
-  // maps to the same 127.0.0.1:PORT). Range 20000-29999 keeps clear of the
-  // ephemeral range and common services. Collisions between two guests hashing
-  // equal are unlikely and, if they occur, the second QEMU simply fails to bind
-  // that VM (reported as a launch failure) rather than silently misrouting.
+  // For user-mode networking, acquire a stable SSH host-forward port from the
+  // persistent allocation map in runtime_dir/ports.json. The map assigns ports
+  // sequentially from [20000, 29999], so two guests never collide, and the same
+  // guest always gets the same port across daemon restarts (idempotent lookup).
   if (s.network == config::Network::User) {
-    std::uint32_t h = 2166136261u;  // FNV-1a
-    for (char c : vm.name) { h ^= static_cast<unsigned char>(c); h *= 16777619u; }
-    s.ssh_hostfwd_port = 20000 + static_cast<int>(h % 10000);
+    s.ssh_hostfwd_port = portmap_acquire(runtime_dir, vm.name);
   }
   return s;
 }

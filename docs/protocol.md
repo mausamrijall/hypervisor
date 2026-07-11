@@ -110,14 +110,15 @@ unparseable). `data` and `error` are mutually exclusive.
 
 `state` is one of:
 
-| State       | Meaning |
-|-------------|---------|
-| `stopped`   | Configured, no process running. |
-| `starting`  | Spawned, not yet confirmed up. |
-| `running`   | QEMU process alive; pinning verified. |
-| `unhealthy` | Running process, but guest-agent health checks failing. |
-| `stopping`  | Graceful shutdown in progress. |
-| `failed`    | Last launch or a health-triggered action failed. |
+| State          | Meaning |
+|----------------|---------|
+| `stopped`      | Configured, no process running. |
+| `starting`     | Spawned, not yet confirmed up. |
+| `running`      | QEMU process alive; pinning verified. |
+| `unhealthy`    | Running process, but guest-agent health checks failing. |
+| `stopping`     | Graceful shutdown in progress. |
+| `failed`       | Last launch or a health-triggered action failed. |
+| `health_panic` | Guest agent stopped responding under `restart = "never"`; the process was SIGKILLed to reclaim its pinned CPU/RAM. A distinct state so an operator sees exactly why it was terminated (vs. the generic `failed`). |
 
 `health` is one of `healthy`, `unhealthy`, `unknown` (no guest agent
 configured, or not yet probed).

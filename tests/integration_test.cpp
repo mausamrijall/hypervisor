@@ -313,7 +313,8 @@ void test_restart_policy(cfg::RestartPolicy policy, const char* label,
             "new process with a different pid is running");
     sup.stop("t4p");
   } else {
-    REQUIRE(rt.state == core::VmState::Failed,
+    REQUIRE(rt.state == core::VmState::Failed ||
+            rt.state == core::VmState::HealthPanic,
             "guest left failed (policy 'never' did not restart)");
     REQUIRE(rt.restarts == 0, "no restart happened");
   }

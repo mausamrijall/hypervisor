@@ -44,33 +44,32 @@ use `std::string`/`std::string_view` + toml++ throughout; the only fixed buffers
 in `guest_agent`/`control_server` is bounds-checked before dereference. No buffer
 overflow was found.
 
-## OPEN — health-failed guest with `restart = "never"` is left running
+## RESOLVED — health-failed guest with `restart = "never"` (was: left running)
 
 **Surfaced in:** Phase 4 (dashboard showed `state=failed` for a guest whose QEMU
 process was still alive and burning CPU).
 
-**Current behavior:** In `Supervisor::handle_failure`, a guest whose health
-checks fail (agent unresponsive past the threshold) with `restart = never` is
-marked `VmState::Failed` but its QEMU process is **left running**. Only
-`on-failure`/`always` stop-and-relaunch.
+**Original behavior:** In `Supervisor::handle_failure`, a guest whose health
+checks failed (agent unresponsive past the threshold) with `restart = never` was
+marked `VmState::Failed` but its QEMU process was **left running**, holding its
+pinned cores and RAM with no automatic reclamation.
 
-**The question:** what should `never` mean for a *health* failure (as opposed to
-a process exit)?
-- Interpretation A (current): "never touch it" — leave the possibly-wedged
-  process alone so an operator can inspect it.
-- Interpretation B: "don't bring it back, but do stop the broken one" — a
-  health-failed guest is stopped and stays stopped.
+**Resolution (1.0 roadmap, Phase A):** chose interpretation B — "don't bring it
+back, but do stop the broken one." `handle_failure` now, under `restart = never`:
+1. issues `SIGKILL` to the QEMU process so its pinned CPU cores and memory are
+   reclaimed immediately;
+2. transitions to a distinct `VmState::HealthPanic` (wire: `health_panic`) so
+   `hypercore list`/`status` and the dashboard (bold red) show exactly why the
+   guest was terminated, rather than the ambiguous `failed`;
+3. clears sampled stats, removes the pid file, and releases the SSH port.
 
-**Why it matters:** a wedged guest under interpretation A keeps its pinned cores
-and RAM and may spin CPU, with no automatic reclamation. Under B we reclaim
-resources but lose forensic state.
-
-**Recommendation:** lean B for resource hygiene, but make it explicit. Deferred
-to audit — flagging rather than silently changing behavior.
+The distinct state preserves the "operator visibility" benefit of interpretation
+A (you know it health-panicked) while gaining the resource hygiene of B. See
+`docs/protocol.md` for the state definition.
 
 Note: a guest whose *process exits* (not a health-check failure) with
-`restart = never` is already correctly left in `Failed` with no process, which
-is unambiguous. This question is only about the health-check path.
+`restart = never` was already correctly left with no process; this change only
+affects the health-check path (where the process was previously left alive).
 
 ## RESOLVED — stale CPU/RSS/health on stopped guests
 

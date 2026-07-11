@@ -19,6 +19,12 @@ add_executable(hardening_test hardening_test.cpp)
 target_link_libraries(hardening_test PRIVATE hypercore_core)
 add_test(NAME hardening_test COMMAND hardening_test)
 
+# QMP/guest-agent fuzz: hostile byte streams from a compromised guest must never
+# crash or hang the host daemon. Uses in-process Unix socketpairs; no QEMU/KVM.
+add_executable(qmp_fuzz_test qmp_fuzz_test.cpp)
+target_link_libraries(qmp_fuzz_test PRIVATE hypercore_core)
+add_test(NAME qmp_fuzz_test COMMAND qmp_fuzz_test)
+
 # --- Phase 1 binary smoke tests ---------------------------------------------
 add_test(
   NAME daemon_version

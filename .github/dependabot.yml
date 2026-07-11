@@ -1,0 +1,48 @@
+# Dependabot configuration.
+#
+# Tracks two dependency surfaces:
+#
+#   1. GitHub Actions — all action versions in .github/workflows/ (weekly).
+#
+#   2. Vendored C++ single-headers in third_party/ — toml++ and nlohmann/json
+#      are pinned to specific releases. Dependabot cannot auto-update header
+#      files directly, but the "pip" + "docker" ecosystems do not apply here.
+#      Instead, we use the "github-actions" ecosystem for CI, and rely on the
+#      manual-update instructions in third_party/README.md combined with the
+#      security-advisory alerts GitHub generates for known CVEs against
+#      marzer/tomlplusplus and nlohmann/json.
+#
+#      Rationale for not using "npm"/"cargo" etc. for the headers: these are
+#      truly vendored (copy-pasted single files), not package-manager deps.
+#      The right signal is GitHub's dependency graph + security advisories,
+#      which does detect them via the SBOM entries in SECURITY.md.
+#
+# Action versions are pinned to SHA in the workflows for supply-chain
+# integrity; Dependabot will open PRs to bump those SHAs when new releases
+# appear, keeping us on patched versions without manual tracking.
+
+version: 2
+updates:
+  # ── GitHub Actions ──────────────────────────────────────────────────────────
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    groups:
+      # Batch all minor/patch action bumps into a single PR to reduce noise.
+      actions-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"

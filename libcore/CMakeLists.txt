@@ -24,6 +24,7 @@ add_library(hypercore_core STATIC
   src/capabilities.cpp
   src/affinity.cpp
   src/pidfile.cpp
+  src/portmap.cpp
   src/proc_stats.cpp
   src/qemu.cpp
   src/qmp.cpp
@@ -37,7 +38,7 @@ target_include_directories(hypercore_core
 
 target_link_libraries(hypercore_core
   PUBLIC hypercore_config hypercore_usock
-  PRIVATE hypercore_common)
+  PRIVATE hypercore_common nlohmann_json)
 
 # Diagnostic helper: prints detected host capabilities as JSON. Used by the
 # test harness's gate and handy for humans debugging a box. (Req #1 output.)

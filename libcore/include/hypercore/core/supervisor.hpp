@@ -22,7 +22,7 @@
 
 namespace hypercore::core {
 
-enum class VmState { Stopped, Starting, Running, Unhealthy, Stopping, Failed };
+enum class VmState { Stopped, Starting, Running, Unhealthy, Stopping, Failed, HealthPanic };
 const char* to_string(VmState);
 
 enum class Health { Unknown, Healthy, Unhealthy };

@@ -63,6 +63,9 @@ const char* state_color(const std::string& state) {
   if (state == "running") return "\033[32m";    // green
   if (state == "unhealthy") return "\033[33m";   // yellow
   if (state == "failed") return "\033[31m";      // red
+  if (state == "health_panic") return "\033[1;31m";  // bold red — killed by
+                                                     // health panic; resources
+                                                     // reclaimed, needs attention
   if (state == "starting" || state == "stopping") return "\033[36m";  // cyan
   return "\033[2m";                              // dim for stopped
 }

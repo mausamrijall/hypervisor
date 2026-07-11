@@ -1,39 +1,42 @@
-# Vendored third-party code
+# third_party — vendored single-file headers
 
-## `toml.hpp` — toml++
+These headers are copied verbatim at a fixed release tag. They are **not**
+fetched at build time — the versions below are the ground truth.
 
-- **Upstream:** https://github.com/marzer/tomlplusplus
-- **Version:** v3.4.0 (pinned)
-- **Form:** official amalgamated single header (`toml.hpp`).
-- **License:** MIT (SPDX-License-Identifier at the top of `toml.hpp`; full text
-  in `LICENSE.toml++`).
+| Library | File | Pinned version | Upstream |
+|---------|------|----------------|----------|
+| toml++ | `toml.hpp` | v3.4.0 | https://github.com/marzer/tomlplusplus |
+| nlohmann/json | `json.hpp` | v3.11.3 | https://github.com/nlohmann/json |
 
-### Why a committed single header, not a git submodule
+## Why vendored?
 
-The project requires **no network fetch at build time** and must build in a
-minimal/offline environment (the ISO builder in Phase 6). A git submodule would
-still need `git submodule update --init` — a network fetch and an extra build
-step — and complicates offline packaging. The amalgamated header is fully
-self-contained, needs no fetch or submodule init ever, and is header-only so it
-adds no link-time dependency. The tradeoff is a 476 KB file in the tree and
-manual version bumps; both are acceptable for a pinned, security-sensitive
-dependency.
+Both libraries are single-header, actively maintained, and have no transitive
+dependencies. Vendoring eliminates network fetches during `cmake` configure and
+guarantees reproducible builds on air-gapped hosts (e.g., the ISO builder).
 
-### Updating
+## Updating a vendored header
 
-Replace `toml.hpp` with the amalgamation from the desired upstream release tag
-and update the version above. Do not hand-edit the header.
+1. Check the upstream release page for the new version.
+2. Download the single-header release asset:
+   ```sh
+   # toml++
+   curl -Lo third_party/toml.hpp \
+     https://github.com/marzer/tomlplusplus/releases/download/v<NEW>/toml.hpp
 
-## `json.hpp` — nlohmann/json
+   # nlohmann/json
+   curl -Lo third_party/json.hpp \
+     https://github.com/nlohmann/json/releases/download/v<NEW>/json.hpp
+   ```
+3. Update the version table above.
+4. Run `cmake --build build && ctest --test-dir build` to confirm nothing broke.
+5. Commit as `chore(deps): bump toml++ to vX.Y.Z` (or `nlohmann/json`).
 
-- **Upstream:** https://github.com/nlohmann/json
-- **Version:** v3.11.3 (pinned)
-- **Form:** official single-header release (`json.hpp`).
-- **License:** MIT (SPDX header in the file).
+## Security advisories
 
-### Why committed single header
+GitHub's dependency graph detects these vendored headers via the repository's
+SBOM and will surface relevant CVEs in the Security tab. **Always update within
+7 days of a security advisory affecting either library.**
 
-Same reasoning as toml++: no build-time fetch, offline-friendly for the ISO
-build, header-only. Used **only by the CLI** to parse the daemon's ndjson
-responses — the daemon itself never links it (it does not parse JSON on its
-privileged control path).
+Dependabot cannot auto-update vendored header files, but it does track all
+GitHub Actions versions in `.github/workflows/` automatically — see
+`.github/dependabot.yml`.
