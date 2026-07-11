@@ -37,7 +37,7 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
       - name: Upload binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hypercore-binaries
           path: |
@@ -145,7 +145,7 @@ jobs:
             "hypercore-${{ env.VERSION }}-x86_64.iso"
 
       - name: Upload ISO artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hypercore-iso
           path: |
